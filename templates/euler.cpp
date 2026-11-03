@@ -1,6 +1,6 @@
-#include <iostream>
+#include <fmt/core.h>
 
 int main() {
-    std::cout << 0 << std::endl;
+    fmt::println("0");
     return 0;
 }
