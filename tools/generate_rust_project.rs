@@ -1,156 +1,67 @@
-#!/usr/bin/env rust-script
-//! Generate rust-project.json for rust-analyzer support
+//! Generate rust-project.json (repo root) for rust-analyzer.
+//! Every `solve.rs` under the repo becomes one crate.
 //!
-//! Usage: rustc generate_rust_project.rs && ./generate_rust_project
+//! Usage: make rust-project   (run from the repo root)
 
-use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-#[derive(Debug)]
-struct RustCrate {
-    display_name: String,
-    root_module: String,
-    edition: String,
-}
+const SKIP_DIRS: [&str; 4] = ["bin", "build", "target", ".git"];
 
 fn find_sysroot_src() -> Option<String> {
-    // Try to get sysroot from rustc
-    let output = Command::new("rustc")
-        .arg("--print")
-        .arg("sysroot")
-        .output()
-        .ok()?;
-
+    let output = Command::new("rustc").args(["--print", "sysroot"]).output().ok()?;
     let sysroot = String::from_utf8(output.stdout).ok()?;
-    let sysroot = sysroot.trim();
-
-    // Standard location within sysroot
-    let src_path = PathBuf::from(sysroot)
-        .join("lib/rustlib/src/rust/library");
-
-    if src_path.exists() {
-        Some(src_path.to_string_lossy().to_string())
-    } else {
-        None
-    }
+    let src = PathBuf::from(sysroot.trim()).join("lib/rustlib/src/rust/library");
+    src.exists().then(|| src.to_string_lossy().to_string())
 }
 
-fn find_rust_crates(src_dir: &Path) -> Vec<RustCrate> {
-    let mut crates = Vec::new();
-
-    // Walk through src directory structure: src/YYYY/DayXX/solve.rs
-    if let Ok(years) = fs::read_dir(src_dir) {
-        for year_entry in years.flatten() {
-            let year_path = year_entry.path();
-            if !year_path.is_dir() {
-                continue;
+fn find_solutions(dir: &Path, out: &mut Vec<PathBuf>) {
+    let Ok(entries) = fs::read_dir(dir) else { return };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            let name = entry.file_name().to_string_lossy().to_string();
+            if !SKIP_DIRS.contains(&name.as_str()) {
+                find_solutions(&path, out);
             }
-
-            let year_name = year_entry.file_name().to_string_lossy().to_string();
-
-            // Look for Day directories
-            if let Ok(days) = fs::read_dir(&year_path) {
-                for day_entry in days.flatten() {
-                    let day_path = day_entry.path();
-                    if !day_path.is_dir() {
-                        continue;
-                    }
-
-                    let day_name = day_entry.file_name().to_string_lossy().to_string();
-                    let solve_rs = day_path.join("solve.rs");
-
-                    if solve_rs.exists() {
-                        let root_module = format!("src/{}/{}/solve.rs", year_name, day_name);
-                        let display_name = format!("{} {}", year_name, day_name);
-
-                        crates.push(RustCrate {
-                            display_name,
-                            root_module,
-                            edition: "2021".to_string(),
-                        });
-                    }
-                }
-            }
+        } else if path.file_name().is_some_and(|n| n == "solve.rs") {
+            out.push(path);
         }
     }
-
-    // Sort by year and day for consistency
-    crates.sort_by(|a, b| a.root_module.cmp(&b.root_module));
-
-    crates
-}
-
-fn generate_json(crates: &[RustCrate], sysroot_src: Option<String>) -> String {
-    let mut json = String::from("{\n");
-
-    // Add sysroot_src if found
-    if let Some(sysroot) = sysroot_src {
-        json.push_str(&format!("  \"sysroot_src\": \"{}\",\n", sysroot));
-    }
-
-    // Add crates array
-    json.push_str("  \"crates\": [\n");
-
-    for (i, krate) in crates.iter().enumerate() {
-        json.push_str("    {\n");
-        json.push_str(&format!("      \"display_name\": \"{}\",\n", krate.display_name));
-        json.push_str(&format!("      \"root_module\": \"{}\",\n", krate.root_module));
-        json.push_str(&format!("      \"edition\": \"{}\",\n", krate.edition));
-        json.push_str("      \"deps\": []\n");
-        json.push_str("    }");
-
-        if i < crates.len() - 1 {
-            json.push_str(",\n");
-        } else {
-            json.push('\n');
-        }
-    }
-
-    json.push_str("  ]\n");
-    json.push_str("}\n");
-
-    json
 }
 
 fn main() {
-    let current_dir = env::current_dir()
-        .expect("Failed to get current directory");
+    let root = std::env::current_dir().expect("no current directory");
+    let mut solutions = Vec::new();
+    find_solutions(&root, &mut solutions);
+    solutions.sort();
 
-    let src_dir = current_dir.join("src");
-    if !src_dir.exists() {
-        eprintln!("Error: src directory not found");
-        eprintln!("Run this from the project root");
-        std::process::exit(1);
+    if solutions.is_empty() {
+        println!("No solve.rs found");
+        return;
     }
 
-    println!("Scanning for Rust solutions...");
-    let crates = find_rust_crates(&src_dir);
-
-    if crates.is_empty() {
-        println!("No Rust solutions found (looking for src/YYYY/DayXX/solve.rs)");
-        std::process::exit(0);
+    let mut json = String::from("{\n");
+    if let Some(sysroot) = find_sysroot_src() {
+        json.push_str(&format!("  \"sysroot_src\": \"{}\",\n", sysroot));
     }
+    json.push_str("  \"crates\": [\n");
+    let entries: Vec<String> = solutions
+        .iter()
+        .map(|p| {
+            let rel = p.strip_prefix(&root).unwrap();
+            let name = rel.parent().unwrap().to_string_lossy().to_string();
+            format!(
+                "    {{\n      \"display_name\": \"{}\",\n      \"root_module\": \"{}\",\n      \"edition\": \"2021\",\n      \"deps\": []\n    }}",
+                name,
+                rel.to_string_lossy()
+            )
+        })
+        .collect();
+    json.push_str(&entries.join(",\n"));
+    json.push_str("\n  ]\n}\n");
 
-    println!("Found {} Rust crate(s)", crates.len());
-    for krate in &crates {
-        println!("  - {}", krate.display_name);
-    }
-
-    println!("\nDetecting sysroot...");
-    let sysroot_src = find_sysroot_src();
-    match &sysroot_src {
-        Some(path) => println!("  Found: {}", path),
-        None => println!("  Not found (rust-analyzer will use default)"),
-    }
-
-    let json = generate_json(&crates, sysroot_src);
-
-    let output_path = current_dir.join("rust-project.json");
-    fs::write(&output_path, json)
-        .expect("Failed to write rust-project.json");
-
-    println!("\n✓ Generated rust-project.json");
-    println!("  Reload your editor to apply changes");
+    fs::write(root.join("rust-project.json"), json).expect("failed to write rust-project.json");
+    println!("Generated rust-project.json with {} crate(s)", solutions.len());
 }

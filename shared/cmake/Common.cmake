@@ -1,27 +1,67 @@
-# Reusable function to build all days for a given year
-function(aoc_add_year_solutions YEAR)
-    set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/bin/cpp)
+# Shared build logic for every site (advent-of-code, project-euler, everybody-codes).
+#
+# Site CMakeLists.txt usage:
+#   cmake_minimum_required(VERSION 3.15)
+#   include(${CMAKE_CURRENT_SOURCE_DIR}/../shared/cmake/Common.cmake)
+#   project(Site LANGUAGES CXX)
+#   puzzles_init()
+#   puzzles_add_puzzle(<target> <puzzle dir>)   # once per puzzle directory
 
-    # Auto-discover all Day*/solve.cpp files with CONFIGURE_DEPENDS
-    # This makes CMake track when new days are added
-    file(GLOB SOLUTIONS CONFIGURE_DEPENDS Day*/solve.cpp)
+get_filename_component(PUZZLES_ROOT "${CMAKE_CURRENT_LIST_DIR}/../.." ABSOLUTE)
 
-    foreach(SOLUTION ${SOLUTIONS})
-        # Extract day number (handles Day1, Day01, Day23, etc.)
-        string(REGEX MATCH "Day0*([0-9]+)" DAY_MATCH ${SOLUTION})
-        set(DAY_NUM ${CMAKE_MATCH_1})
+# Call after project(): defines flags, shared library and output directories.
+macro(puzzles_init)
+    set(CMAKE_CXX_STANDARD 23)
+    set(CMAKE_CXX_STANDARD_REQUIRED ON)
+    set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+    set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/bin)
 
-        # Create target name: YEAR_DayXX
-        set(TARGET_NAME "${YEAR}_Day${DAY_NUM}")
+    include(FetchContent)
+    FetchContent_Declare(fmt
+        GIT_REPOSITORY https://github.com/fmtlib/fmt.git
+        GIT_TAG 12.2.0
+    )
+    FetchContent_MakeAvailable(fmt)
+    find_program(PUZZLES_RUSTC rustc)
 
-        message(STATUS "  Adding solution: ${TARGET_NAME}")
+    add_library(compile_flags_interface INTERFACE)
+    target_compile_options(compile_flags_interface INTERFACE
+        -Wall
+        -Wextra
+        -Wshadow
+        -Wnon-virtual-dtor
+        -Wold-style-cast
+        -Wcast-align
+        -Woverloaded-virtual
+        -Wmisleading-indentation
+        -Wnull-dereference
+        -pedantic
+        $<$<CONFIG:DEBUG>:-g>
+        $<$<CONFIG:RELEASE>:-O3>
+    )
 
-        add_executable(${TARGET_NAME} ${SOLUTION})
-        target_link_libraries(${TARGET_NAME} PRIVATE
-            compile_flags_interface
-            fmt::fmt
-            aoc_utils
+    add_library(aoc_utils ${PUZZLES_ROOT}/shared/src/utils.cpp)
+    target_include_directories(aoc_utils PUBLIC ${PUZZLES_ROOT}/shared/include)
+    target_link_libraries(aoc_utils PUBLIC compile_flags_interface)
+endmacro()
+
+# Adds <target> (C++) for DIR/solve.cpp and <target>_rs (Rust) for DIR/solve.rs,
+# whichever exist.
+function(puzzles_add_puzzle TARGET DIR)
+    if(EXISTS ${DIR}/solve.cpp)
+        add_executable(${TARGET} ${DIR}/solve.cpp)
+        target_link_libraries(${TARGET} PRIVATE compile_flags_interface fmt::fmt aoc_utils)
+    endif()
+
+    if(EXISTS ${DIR}/solve.rs AND PUZZLES_RUSTC)
+        set(OUT ${PROJECT_SOURCE_DIR}/bin/${TARGET}_rs)
+        add_custom_command(
+            OUTPUT ${OUT}
+            COMMAND ${CMAKE_COMMAND} -E make_directory ${PROJECT_SOURCE_DIR}/bin
+            COMMAND ${PUZZLES_RUSTC} -O ${DIR}/solve.rs -o ${OUT}
+            DEPENDS ${DIR}/solve.rs
+            COMMENT "Building ${TARGET}_rs"
         )
-        target_include_directories(${TARGET_NAME} PRIVATE ${PROJECT_SOURCE_DIR}/include)
-    endforeach()
+        add_custom_target(${TARGET}_rs ALL DEPENDS ${OUT})
+    endif()
 endfunction()

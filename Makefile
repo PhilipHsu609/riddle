@@ -1,80 +1,22 @@
-SHELL := /bin/bash
-BIN_DIR := bin
+# Dispatcher. Each site owns its Makefile/CMakeLists; see <site>/Makefile.
+#   make aoc-run DAY=5            make euler-run N=12
+#   make ec-add YEAR=2025 QUEST=3 make aoc-add DAY=5 LANGUAGE=rust
+SITES := advent-of-code project-euler everybody-codes
 
-YEAR ?= $(shell date +%Y)
-DAY ?= 1
-LANGUAGE ?= cpp
-
-# Computed variables
-DAY_PADDED := $(shell printf "%02d" $(DAY))
-DAY_DIR := src/$(YEAR)/Day$(DAY_PADDED)
-TARGET_EXE := $(BIN_DIR)/$(LANGUAGE)/$(YEAR)_Day$(DAY)
-
-# CMake configuration
-CMAKE_EXPORT_COMPILE_COMMANDS := -DCMAKE_EXPORT_COMPILE_COMMANDS:BOOL=TRUE
-CMAKE_CXX_COMPILER_FLAG := -DCMAKE_CXX_COMPILER:STRING=clang++
-CMAKE_C_COMPILER_FLAG := -DCMAKE_C_COMPILER:STRING=clang
-
-CMAKE_FLAGS := $(CMAKE_EXPORT_COMPILE_COMMANDS) $(CMAKE_CXX_COMPILER_FLAG) $(CMAKE_C_COMPILER_FLAG)
-
-.PHONY: all build init add run clean rust-project help
-
-# Compile utility binary only if source is newer
-bin/util/generate_rust_project: util/generate_rust_project.rs
-	@mkdir -p bin/util
-	@rustc util/generate_rust_project.rs -o bin/util/generate_rust_project
-
+.PHONY: all clean rust-project help
 help:
-	@echo "Usage: make [target] [YEAR=XXXX] [DAY=XX] [LANGUAGE=cpp|rust]"
-	@echo ""
-	@echo "  all          - compile all solutions"
-	@echo "  add          - create new day directory and copy template"
-	@echo "  run          - build and run specific solution"
-	@echo "  rust-project - regenerate rust-project.json for rust-analyzer"
-	@echo "  clean        - remove all compiled binaries"
-	@echo ""
-	@echo "Examples:"
-	@echo "  make add DAY=5              - create Day05 (C++)"
-	@echo "  make add DAY=5 LANGUAGE=rust - create Day05 (Rust)"
-	@echo "  make run DAY=5              - run Day05 (C++)"
-	@echo "  make run DAY=5 LANGUAGE=rust - run Day05 (Rust)"
+	@echo "make {aoc|euler|ec}-{add|run|build|clean} [site variables]"
+	@echo "make all | clean | rust-project"
 
-all: init config build
-	
-config:
-	cmake ${CMAKE_FLAGS} -S . -B build
+aoc-%:   ; $(MAKE) -C advent-of-code $*
+euler-%: ; $(MAKE) -C project-euler $*
+ec-%:    ; $(MAKE) -C everybody-codes $*
 
-build:
-	cmake --build build
+all clean:
+	@for s in $(SITES); do $(MAKE) -C $$s $@ || exit 1; done
 
-init:
-	mkdir -p $(BIN_DIR)/{cpp,rust}
+bin/generate_rust_project: tools/generate_rust_project.rs
+	@mkdir -p bin && rustc $< -o $@
 
-add:
-	@mkdir -p $(DAY_DIR)
-	@touch $(DAY_DIR)/input.txt $(DAY_DIR)/example.txt
-	@if [ "$(LANGUAGE)" = "rust" ]; then \
-		cp template/solve.rs $(DAY_DIR)/solve.rs; \
-		echo "Updating rust-project.json..."; \
-		$(MAKE) bin/util/generate_rust_project >/dev/null 2>&1; \
-		./bin/util/generate_rust_project >/dev/null; \
-	else \
-		cp template/solve.cpp $(DAY_DIR)/solve.cpp; \
-	fi
-	@echo "Created $(DAY_DIR)"
-
-run: init
-	@if [ "$(LANGUAGE)" = "rust" ]; then \
-		rustc $(CURDIR)/$(DAY_DIR)/solve.rs -o $(TARGET_EXE); \
-	else \
-		test -f build/CMakeCache.txt || cmake $(CMAKE_FLAGS) -S . -B build >/dev/null; \
-		cmake --build build --target $(YEAR)_Day$(DAY) 2>&1 | grep -v "Entering\|Leaving\|Built target" || true; \
-	fi
-	@echo "" && cd $(DAY_DIR) && $(CURDIR)/$(TARGET_EXE)
-
-rust-project: bin/util/generate_rust_project
-	@echo "Regenerating rust-project.json..."
-	@./bin/util/generate_rust_project
-
-clean:
-	rm -rf $(BIN_DIR)
+rust-project: bin/generate_rust_project
+	@./bin/generate_rust_project

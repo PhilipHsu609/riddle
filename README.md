@@ -1,28 +1,23 @@
-# Advent of Code
+# Riddles
 
-Personal solutions to [Advent of Code](https://adventofcode.com) puzzles in C++ and Rust.
+Personal solutions to programming puzzle sites, in C++ and Rust.
+
+| Site | Directory | Puzzle path | Make prefix |
+|---|---|---|---|
+| [Advent of Code](https://adventofcode.com) | `advent-of-code/` | `<year>/DayNN/` | `aoc-` |
+| [Project Euler](https://projecteuler.net) | `project-euler/` | `NNNN/` | `euler-` |
+| [Everybody Codes](https://everybody.codes) | `everybody-codes/` | `<year>/QuestNN/` | `ec-` |
 
 ## Usage
 
+Needs `clang`, `cmake`, `fmt`, and `rustc`.
+
 ```bash
-# Create and run (auto-detects current year)
-make add DAY=5
-make run DAY=5
-
-# Rust
-make add DAY=5 LANGUAGE=rust
-make run DAY=5 LANGUAGE=rust
-
-# Regenerate rust-project.json for IDE support
-make rust-project
+make aoc-add DAY=5                  # scaffold (add LANGUAGE=rust for Rust)
+make aoc-run DAY=5                  # build and run (YEAR defaults to current)
+make euler-run N=12
+make ec-run YEAR=2025 QUEST=3
+make all | clean | rust-project
 ```
 
-## Structure
-
-```
-src/YYYY/DayXX/
-  solve.cpp       # C++ solution
-  solve.rs        # Rust solution (optional)
-  input.txt
-  example.txt
-```
+Each site also works standalone: `cd advent-of-code && make run DAY=5`.

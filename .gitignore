@@ -1,9 +1,11 @@
 /.vscode/
-/.cache/
-/bin/
-/build/
+.cache/
+.zed/
+bin/
+build/
 
 /rust-project.json
 
 *.gch
 input.txt
+part[0-9].txt
