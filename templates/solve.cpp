@@ -15,12 +15,12 @@ auto read_input(const fs::path &path) { return utils::read_lines(path); }
 // Helper functions here
 
 template <typename T>
-auto part1(const T &input) {
+auto part1(const std::vector<T> &input) {
     return 0;
 }
 
 template <typename T>
-auto part2(const T &input) {
+auto part2(const std::vector<T> &input) {
     return 0;
 }
 
