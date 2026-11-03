@@ -30,7 +30,7 @@ build: config
 
 add:
 	@mkdir -p $(PUZ_DIR)
-	@cd $(PUZ_DIR) && touch $(INPUT_FILES)
+	@$(if $(INPUT_FILES),cd $(PUZ_DIR) && touch $(INPUT_FILES))
 	@if [ "$(LANGUAGE)" = "rust" ]; then \
 		cp -n $(ROOT)/templates/solve.rs $(PUZ_DIR)/solve.rs; \
 	else \
