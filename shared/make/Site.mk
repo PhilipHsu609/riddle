@@ -40,7 +40,7 @@ add:
 
 run:
 	@test -d $(PUZ_DIR) || { echo "No such puzzle: $(PUZ_DIR)"; exit 1; }
-	@test -f build/Makefile || cmake $(CMAKE_FLAGS) -S . -B build >/dev/null
+	@cmake $(CMAKE_FLAGS) -S . -B build >/dev/null
 	@cmake --build build --target $(BIN)
 	@echo "" && cd $(PUZ_DIR) && $(CURDIR)/bin/$(BIN)
 
